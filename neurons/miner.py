@@ -46,10 +46,12 @@ class Miner(BaseMinerNeuron):
         meta = self.detector.meta
         self.model_manifest = build_local_model_manifest(
             repo_root=ROOT,
+            # Every entry must be present in the published repo, so the manifest
+            # never names a file a reader cannot open.
             implementation_files=[
+                ROOT / "neurons" / "miner.py",
                 ROOT / "detector" / "inference.py",
                 ROOT / "detector" / "features.py",
-                ROOT / "detector" / "artifacts" / "model.joblib",
                 ROOT / "detector" / "artifacts" / "meta.json",
             ],
             defaults={
