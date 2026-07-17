@@ -15,6 +15,7 @@ Run:
 
 import hashlib
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -60,6 +61,38 @@ def _artifact_sha256(artifact_path: Path) -> str:
     return digest.hexdigest()
 
 
+def _repo_commit(repo_root: Path) -> str:
+    """The commit being served. Falls back to git when the env var is unset —
+    an empty repo_commit is a manifest policy violation, not a blank field.
+    """
+    env_commit = os.environ.get("POKER44_MODEL_REPO_COMMIT", "").strip()
+    if env_commit:
+        return env_commit
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _artifact_url(repo_url: str, commit: str) -> str:
+    """Permalink to the served weights, pinned to the commit rather than a branch
+    so it keeps resolving to the exact bytes artifact_sha256 describes.
+    """
+    if not repo_url or not commit:
+        return ""
+    base = repo_url.strip().rstrip("/")
+    if base.endswith(".git"):
+        base = base[:-4]
+    return f"{base}/raw/{commit}/detector/artifacts/model.joblib"
+
+
 class Miner(BaseMinerNeuron):
     """Poker44 bot-detection miner."""
 
@@ -67,6 +100,8 @@ class Miner(BaseMinerNeuron):
         super().__init__(config=config)
         self.detector = get_model()
         meta = self.detector.meta
+        repo_url = os.environ.get("POKER44_MODEL_REPO_URL", "")
+        repo_commit = _repo_commit(ROOT)
         self.model_manifest = build_local_model_manifest(
             repo_root=ROOT,
             # Every entry must be present in the published repo, so the manifest
@@ -82,8 +117,10 @@ class Miner(BaseMinerNeuron):
                 "model_version": MODEL_VERSION,
                 "framework": "scikit-learn",
                 "license": "MIT",
-                "repo_url": os.environ.get("POKER44_MODEL_REPO_URL", ""),
+                "repo_url": repo_url,
+                "repo_commit": repo_commit,
                 "artifact_sha256": _artifact_sha256(ARTIFACT),
+                "artifact_url": _artifact_url(repo_url, repo_commit),
                 "notes": "Behavioural bot detector.",
                 "open_source": True,
                 "inference_mode": "remote",
