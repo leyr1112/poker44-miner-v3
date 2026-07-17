@@ -13,6 +13,7 @@ Run:
 # stringised (PEP 563) annotations break that with "issubclass() arg 1 must be a
 # class". The reference miner omits the future-import for the same reason.
 
+import hashlib
 import os
 import sys
 import time
@@ -35,6 +36,28 @@ from detector.inference import get_model
 
 MODEL_NAME = os.environ.get("POKER44_MODEL_NAME", "poker44-miner-v3")
 MODEL_VERSION = os.environ.get("POKER44_MODEL_VERSION", "3.0.0")
+ARTIFACT = ROOT / "detector" / "artifacts" / "model.joblib"
+
+
+def _artifact_sha256(artifact_path: Path) -> str:
+    """Fingerprint of the served weights.
+
+    The weights are distributed out-of-band, so this is what lets a reader tell
+    whether the artifact behind a given score is the one they were told about.
+    """
+    env_hash = os.environ.get("POKER44_MODEL_ARTIFACT_SHA256", "").strip()
+    if env_hash:
+        return env_hash
+    if not artifact_path.exists():
+        return ""
+    digest = hashlib.sha256()
+    with artifact_path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class Miner(BaseMinerNeuron):
@@ -60,6 +83,7 @@ class Miner(BaseMinerNeuron):
                 "framework": "scikit-learn",
                 "license": "MIT",
                 "repo_url": os.environ.get("POKER44_MODEL_REPO_URL", ""),
+                "artifact_sha256": _artifact_sha256(ARTIFACT),
                 "notes": "Behavioural bot detector.",
                 "open_source": True,
                 "inference_mode": "remote",
